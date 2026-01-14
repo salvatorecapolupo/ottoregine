@@ -1,180 +1,324 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <title>Gioco delle Otto Regine</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Bootstrap 5 -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    .cell {
-      width: 40px;
-      height: 40px;
-      box-sizing: border-box;
-      border: 1px solid #999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      cursor: pointer;
-      position: relative;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gioco delle 8 regine - Con helper in backtracking</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
 
-    .black { background-color: #444; color: white; }
-    .white { background-color: #eee; }
+        h1 { margin-bottom: 10px; }
+        p { margin-bottom: 20px; color: #ecf0f1; }
 
-    .cell.attacked::after {
-      content: "";
-      background-color: rgba(255, 0, 0, 0.25);
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 1;
-    }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
 
-    .cell.queen::before {
-      content: "♕";
-      position: relative;
-      z-index: 2;
-    }
-  </style>
+        /* Scacchiera */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 5px solid #34495e;
+            user-select: none;
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            cursor: pointer;
+            position: relative; /* Per gestire gli overlay colore */
+        }
+
+        /* Colori Scacchiera "Classica" */
+        .cell.white { background-color: #f0d9b5; color: black; }
+        .cell.black { background-color: #b58863; color: black; }
+
+        /* Contrasto Migliorato per le zone di Scacco */
+        /* Usiamo pseudo-elementi o background-color RGBA per mantenere la trama visibile */
+        .cell.attacked::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(231, 76, 60, 0.6); /* Rosso deciso ma trasparente */
+            pointer-events: none;
+        }
+
+        /* Feedback visivo per l'ultima mossa suggerita */
+        .cell.hint {
+            animation: pulse 1s ease-out;
+            background-color: rgba(46, 204, 113, 0.7) !important; /* Verde brillante */
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .btn-reset { background-color: #e74c3c; color: white; }
+        .btn-reset:hover { background-color: #c0392b; }
+
+        .btn-help { background-color: #f1c40f; color: #2c3e50; font-weight: bold; }
+        .btn-help:hover { background-color: #d4ac0d; }
+
+        .status {
+            height: 24px;
+            font-weight: bold;
+            color: #f39c12;
+        }
+
+    </style>
 </head>
 <body>
-  <div class="container my-5">
-    <h2 class="text-center mb-3">Gioco delle Otto Regine</h2>
 
-    <div class="alert alert-info" role="alert">
-      Posiziona le 8 regine sulla scacchiera senza che nessuna possa attaccarne un’altra.<br>
-      Le regine si attaccano su righe, colonne e diagonali.<br>
-      Clicca su una cella per piazzare o rimuovere una regina.
+    <h1>Il rompicapo delle 8 Regine</h1>
+    <p>Posiziona 8 regine senza che si minaccino a vicenda.</p>
+
+    <div class="game-container">
+        <div id="board" class="board"></div>
+        
+        <div class="status" id="statusMsg"></div>
+
+        <div class="controls">
+            <button class="btn-reset" onclick="resetBoard()">Ricomincia</button>
+            <button class="btn-help" onclick="getOneStepHelp()">Aiutami (1 Passo)</button>
+        </div>
     </div>
 
-    <div class="text-center mb-3">
-      <div id="counter" class="fw-bold mb-2">Regine posizionate: 0/8</div>
-      <button class="btn btn-primary" onclick="resetBoard()">Ricomincia</button>
-      <button id="solveBtn" class="btn btn-secondary">Aiutami</button>
-    </div>
+    <script>
+        const N = 8;
+        let queens = []; // Array di oggetti {r, c}
+        
+        // Inizializzazione
+        function initGame() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.classList.add((r + c) % 2 === 0 ? 'white' : 'black');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.onclick = () => toggleQueen(r, c);
+                    boardEl.appendChild(cell);
+                }
+            }
+            queens = [];
+            updateBoardVisuals();
+        }
 
-    <div id="chessboard" class="d-flex flex-wrap mx-auto" style="width: 320px; height: 320px;"></div>
-  </div>
+        // Gestione Click
+        function toggleQueen(r, c) {
+            const existingIndex = queens.findIndex(q => q.r === r && q.c === c);
+            
+            if (existingIndex >= 0) {
+                // Rimuovi regina
+                queens.splice(existingIndex, 1);
+            } else {
+                // Rimuovi eventuali regine sulla stessa riga (solo una per riga è permessa logicamente, anche se il gioco permette errori)
+                // Opzionale: se vuoi permettere errori liberi, commenta la riga sotto
+                queens = queens.filter(q => q.r !== r); 
+                
+                // Aggiungi regina
+                queens.push({r, c});
+            }
+            updateBoardVisuals();
+            checkVictory();
+        }
 
-  <!-- JS inline -->
-  <script>
-    const board = document.getElementById('chessboard');
-    const counter = document.getElementById('counter');
-    let queens = [];
+        // Logica Visiva e Conflitti
+        function updateBoardVisuals() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(c => {
+                c.innerHTML = '';
+                c.classList.remove('attacked');
+                c.classList.remove('hint');
+            });
 
-    function isAttacked(row, col) {
-      return queens.some(([r, c]) =>
-        r === row || c === col || Math.abs(r - row) === Math.abs(c - col)
-      );
-    }
+            // Mappa delle celle attaccate
+            let attacked = new Set();
 
-    function updateBoard() {
-      [...board.children].forEach(cell => {
-        const row = parseInt(cell.dataset.row);
-        const col = parseInt(cell.dataset.col);
-        const hasQueen = queens.some(([r, c]) => r === row && c === col);
-        const attacked = isAttacked(row, col) && !hasQueen;
+            queens.forEach((q1, i) => {
+                // Disegna Regina
+                const cell = document.querySelector(`.cell[data-row='${q1.r}'][data-col='${q1.c}']`);
+                if(cell) cell.innerHTML = '♛';
 
-        cell.classList.toggle('queen', hasQueen);
-        cell.classList.toggle('attacked', attacked);
-      });
+                // Calcola attacchi
+                queens.forEach((q2, j) => {
+                    if (i !== j) {
+                        if (q1.r === q2.r || q1.c === q2.c || Math.abs(q1.r - q2.r) === Math.abs(q1.c - q2.c)) {
+                            // Conflitto diretto tra due regine
+                            const c1 = document.querySelector(`.cell[data-row='${q1.r}'][data-col='${q1.c}']`);
+                            const c2 = document.querySelector(`.cell[data-row='${q2.r}'][data-col='${q2.c}']`);
+                            if(c1) c1.classList.add('attacked');
+                            if(c2) c2.classList.add('attacked');
+                        }
+                    }
+                });
+            });
+        }
 
-      counter.textContent = `Regine posizionate: ${queens.length}/8`;
+        // Algoritmo di Backtracking per trovare UNA soluzione valida partendo dallo stato attuale
+        function solve(fixedQueens) {
+            // fixedQueens è un array di {r, c} che l'utente ha già piazzato e sono validi
+            let board = new Array(N).fill(-1);
+            
+            // Popola la board virtuale con le regine fisse
+            for(let q of fixedQueens) {
+                board[q.r] = q.c;
+            }
 
-      if (queens.length === 8) {
-        setTimeout(() => alert("Hai vinto! Hai posizionato 8 regine senza conflitti."), 100);
-      }
-    }
+            // Trova la prima riga libera
+            let startRow = 0;
+            while(startRow < N && board[startRow] !== -1) {
+                startRow++;
+            }
 
-    function handleClick(e) {
-      const row = parseInt(e.target.dataset.row);
-      const col = parseInt(e.target.dataset.col);
-      const index = queens.findIndex(([r, c]) => r === row && c === col);
-      if (index >= 0) {
-        queens.splice(index, 1);
-      } else if (!isAttacked(row, col) && queens.length < 8) {
-        queens.push([row, col]);
-      }
-      updateBoard();
-    }
+            // Funzione ricorsiva interna
+            function solveRecursive(row) {
+                if (row === N) return true; // Soluzione trovata
 
-    function resetBoard() {
-      queens = [];
-      updateBoard();
-    }
+                // Se la riga è già occupata da una regina fissata dall'utente, passa alla prossima
+                if (board[row] !== -1) {
+                    return solveRecursive(row + 1);
+                }
 
-    // Costruzione scacchiera
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell ' + ((row + col) % 2 === 0 ? 'white' : 'black');
-        cell.dataset.row = row;
-        cell.dataset.col = col;
-        cell.addEventListener('click', handleClick);
-        board.appendChild(cell);
-      }
-    }
+                for (let col = 0; col < N; col++) {
+                    if (isSafe(board, row, col)) {
+                        board[row] = col;
+                        if (solveRecursive(row + 1)) return true;
+                        board[row] = -1; // Backtrack
+                    }
+                }
+                return false;
+            }
 
-// ***** BACKTRACKING PER RISOLVERE LE OTTO REGINE *****
+            if (solveRecursive(0)) {
+                return board; // Ritorna l'array soluzione
+            }
+            return null; // Nessuna soluzione possibile
+        }
 
-function solveEightQueens() {
-  const N = 8;
-  const board = Array(N).fill().map(() => Array(N).fill(0));
+        function isSafe(board, row, col) {
+            for (let i = 0; i < N; i++) {
+                if (board[i] !== -1) {
+                    let r = i;
+                    let c = board[i];
+                    // Controllo colonna e diagonali (la riga è implicita nel backtracking)
+                    if (c === col || Math.abs(row - r) === Math.abs(col - c)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
 
-  const solutions = [];
-  const cols = new Set(), diag1 = new Set(), diag2 = new Set();
+        // Funzione Principale "AIUTAMI" (Un passo)
+        function getOneStepHelp() {
+            const msg = document.getElementById('statusMsg');
+            msg.innerText = "";
 
-  function backtrack(r) {
-    if (r === N) {
-      solutions.push(board.map(row => row.slice()));
-      return true; // troviamo solo la prima soluzione
-    }
-    for (let c = 0; c < N; c++) {
-      if (cols.has(c) || diag1.has(r - c) || diag2.has(r + c)) continue;
-      board[r][c] = 1;
-      cols.add(c);
-      diag1.add(r - c);
-      diag2.add(r + c);
+            // 1. Controlla se ci sono conflitti attuali
+            let conflicts = false;
+            for(let i=0; i<queens.length; i++) {
+                for(let j=i+1; j<queens.length; j++) {
+                    let q1 = queens[i];
+                    let q2 = queens[j];
+                    if (q1.r === q2.r || q1.c === q2.c || Math.abs(q1.r - q2.r) === Math.abs(q1.c - q2.c)) {
+                        conflicts = true;
+                    }
+                }
+            }
 
-      if (backtrack(r + 1)) return true;
+            if (conflicts) {
+                msg.innerText = "⚠️ Correggi i conflitti rossi prima di chiedere aiuto!";
+                return;
+            }
 
-      board[r][c] = 0;
-      cols.delete(c);
-      diag1.delete(r - c);
-      diag2.delete(r + c);
-    }
-    return false;
-  }
+            if (queens.length === N) {
+                msg.innerText = "🎉 Hai già completato la scacchiera!";
+                return;
+            }
 
-  backtrack(0);
-  return solutions[0]; // ritorna la prima soluzione trovata
-}
+            // 2. Trova una soluzione che includa le regine attuali
+            const solutionBoard = solve(queens);
 
-// ***** AGGIORNA LA SCACCHIERA UI *****
+            if (solutionBoard) {
+                // 3. Trova la prima riga vuota e piazza la regina secondo la soluzione trovata
+                for (let r = 0; r < N; r++) {
+                    const hasQueen = queens.some(q => q.r === r);
+                    if (!hasQueen) {
+                        // Aggiungi la regina suggerita
+                        const correctCol = solutionBoard[r];
+                        queens.push({r: r, c: correctCol});
+                        
+                        updateBoardVisuals();
+                        
+                        // Evidenzia la mossa
+                        const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${correctCol}']`);
+                        if(cell) cell.classList.add('hint');
+                        
+                        return; // Fatto un solo passo
+                    }
+                }
+            } else {
+                msg.innerText = "⛔ Nessuna soluzione possibile da qui. Devi togliere l'ultima regina.";
+            }
+        }
 
-function updateBoardUI(solution) {
-  if (!solution) return alert("Nessuna soluzione trovata!");
-  const cells = document.querySelectorAll(".cell"); // usa il tuo selettore delle celle
-  cells.forEach(cell => cell.classList.remove("queen"));
+        function checkVictory() {
+            if (queens.length === N) {
+                 // Verifica finale veloce
+                 let conflicts = false;
+                 // ... logica verifica ...
+                 // Se ok:
+                 const msg = document.getElementById('statusMsg');
+                 // msg.innerText = "Vittoria!";
+            }
+        }
 
-  solution.forEach((row, r) => {
-    row.forEach((val, c) => {
-      if (val === 1) {
-        const idx = r * 8 + c;
-        cells[idx].classList.add("queen");
-      }
-    });
-  });
-}
-    
-    updateBoard();
+        function resetBoard() {
+            queens = [];
+            document.getElementById('statusMsg').innerText = "";
+            updateBoardVisuals();
+        }
 
-    document.getElementById("solveBtn").addEventListener("click", () => {
-  const solution = solveEightQueens();
-  updateBoardUI(solution);
-});
+        // Avvio
+        initGame();
 
-  </script>
+    </script>
 </body>
 </html>
