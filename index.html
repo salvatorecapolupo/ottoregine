@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Problema delle 8 regine - Gioco interattivo (con backtracking guidato)</title>
+    <title>8 Regine - Master Edition</title>
     <style>
         :root {
             --bg-color: #2c3e50;
             --board-border: #34495e;
             --white-cell: #ecf0f1;
             --black-cell: #95a5a6;
-            --unsafe-overlay: rgba(231, 76, 60, 0.25); /* Rosso tenue per le zone minacciate */
-            --conflict-color: #c0392b; /* Rosso scuro per l'errore grave */
-            --hint-color: #27ae60; /* Verde per il suggerimento */
+            --unsafe-overlay: rgba(231, 76, 60, 0.25);
+            --conflict-color: #c0392b;
+            --hint-color: #27ae60;
+            --progress-bg: #34495e;
+            --progress-fill: #3498db;
+            --progress-error: #e74c3c;
             --btn-reset: #e74c3c;
             --btn-help: #f39c12;
         }
@@ -27,100 +30,136 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
         }
 
-        h1 { margin: 10px 0; font-size: 1.8rem; }
-        p { margin-bottom: 15px; color: #bdc3c7; font-size: 0.9rem; }
+        h1 { margin: 0 0 10px 0; font-size: 1.8rem; letter-spacing: 1px; }
 
         .game-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 15px;
+            max-width: 500px;
+            width: 100%;
         }
 
-        /* Controlli SOPRA la scacchiera */
+        /* --- CONTROLLI --- */
         .controls {
             display: flex;
             gap: 15px;
-            margin-bottom: 5px;
+            width: 100%;
+            justify-content: center;
         }
 
         button {
-            padding: 10px 20px;
-            font-size: 16px;
+            flex: 1;
+            padding: 12px;
+            font-size: 15px;
             cursor: pointer;
             border: none;
             border-radius: 6px;
             font-weight: 600;
-            transition: transform 0.1s, opacity 0.2s;
+            transition: filter 0.2s, transform 0.1s;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            max-width: 200px;
         }
 
         button:active { transform: translateY(2px); }
+        button:hover { filter: brightness(1.1); }
 
         .btn-reset { background-color: var(--btn-reset); color: white; }
         .btn-help { background-color: var(--btn-help); color: #2c3e50; }
 
-        /* Scacchiera */
+        /* --- BARRA DI PROGRESSO E STATO --- */
+        .status-panel {
+            width: 100%;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #bdc3c7;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 8px;
+            background-color: var(--progress-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: var(--progress-fill);
+            width: 0%;
+            transition: width 0.4s ease, background-color 0.3s;
+        }
+
+        .progress-bar.error { background-color: var(--progress-error); }
+
+        .witty-comment {
+            font-size: 0.95rem;
+            color: #f1c40f;
+            font-style: italic;
+            min-height: 1.4em;
+        }
+
+        /* --- SCACCHIERA --- */
         .board {
             display: grid;
-            grid-template-columns: repeat(8, 55px);
-            grid-template-rows: repeat(8, 55px);
+            grid-template-columns: repeat(8, 1fr); /* Responsive */
+            grid-template-rows: repeat(8, 1fr);
             border: 8px solid var(--board-border);
             border-radius: 4px;
             user-select: none;
             background-color: var(--board-border);
-            gap: 1px; /* Piccola griglia tra le celle */
+            gap: 1px;
+            width: 100%;
+            aspect-ratio: 1 / 1; /* Mantiene quadrato */
+            max-width: 450px;
         }
 
         .cell {
-            width: 55px;
-            height: 55px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 36px;
+            font-size: clamp(20px, 5vw, 36px); /* Dimensione font dinamica */
             cursor: pointer;
             position: relative;
             background-color: var(--white-cell);
             color: #2c3e50;
-            transition: background-color 0.2s;
         }
 
-        /* Pattern scacchiera */
         .cell.black { background-color: var(--black-cell); }
 
-        /* 1. Celle "bruciate" (minacciate da una regina esistente) */
+        /* Effetti Visivi */
         .cell.unsafe::before {
             content: '';
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
+            inset: 0;
             background-color: var(--unsafe-overlay);
-            z-index: 1;
-            pointer-events: none; /* Permette il click sotto */
-        }
-
-        /* Indicatore visuale "X" molto sottile sulle celle bruciate (opzionale, per chiarezza) */
-        .cell.unsafe::after {
-            content: '×';
-            position: absolute;
-            font-size: 20px;
-            color: rgba(192, 57, 43, 0.4);
             z-index: 1;
             pointer-events: none;
         }
 
-        /* 2. Conflitto REALE (Regina su Regina) */
         .cell.conflict {
             background-color: var(--conflict-color) !important;
             color: white !important;
             animation: shake 0.4s;
             z-index: 2;
         }
-        .cell.conflict::after { content: ''; } /* Rimuove la X sulle regine */
 
-        /* 3. Suggerimento AI */
         .cell.hint {
             border: 3px solid var(--hint-color);
             box-sizing: border-box;
@@ -128,11 +167,10 @@
             z-index: 3;
         }
 
-        .status {
-            min-height: 24px;
-            font-weight: bold;
-            color: #f1c40f;
-            text-align: center;
+        .queen-marker {
+            z-index: 5;
+            position: relative;
+            pointer-events: none;
         }
 
         @keyframes shake {
@@ -141,33 +179,48 @@
             75% { transform: translateX(3px); }
         }
 
-        /* Regina (carattere unicode) sopra a tutto */
-        .queen-marker {
-            z-index: 5;
-            position: relative;
-            pointer-events: none;
-        }
-
     </style>
 </head>
 <body>
 
     <div class="game-container">
-        <h1>8 Regine: Visual Puzzle</h1>
+        <h1>8 Regine</h1>
         
         <div class="controls">
             <button class="btn-reset" onclick="resetBoard()">🗑️ Ricomincia</button>
-            <button class="btn-help" onclick="getOneStepHelp()">💡 Aiutami (1 Passo)</button>
+            <button class="btn-help" onclick="getOneStepHelp()">💡 Aiutami</button>
         </div>
 
-        <div class="status" id="statusMsg">Posiziona 8 regine...</div>
+        <div class="status-panel">
+            <div class="progress-header">
+                <span id="progressText">0/8 Regine</span>
+                <span id="percentText">0%</span>
+            </div>
+            <div class="progress-track">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <div id="wittyComment" class="witty-comment">Piazza la prima regina...</div>
+        </div>
 
         <div id="board" class="board"></div>
     </div>
 
     <script>
         const N = 8;
-        let queens = []; // Array di oggetti {r, c}
+        let queens = []; // {r, c}
+
+        // Frasi simpatiche per ogni step (0 a 8)
+        const comments = [
+            "Tutto tace. La scacchiera attende.",        // 0
+            "Ottimo inizio. Chi ben comincia...",       // 1
+            "Due regine. Facile, vero?",                // 2
+            "Tre regine. Lo spazio inizia a mancare.",  // 3
+            "Quattro! Sei a metà dell'opera.",          // 4
+            "Cinque. Attento a dove metti i piedi.",    // 5
+            "Sei. La tensione sale...",                 // 6
+            "Sette! Manca solo il colpo finale!",       // 7
+            "OTTO! SEI UN GENIO ASSOLUTO! 🏆"           // 8
+        ];
 
         function initGame() {
             const boardEl = document.getElementById('board');
@@ -175,83 +228,114 @@
             for (let r = 0; r < N; r++) {
                 for (let c = 0; c < N; c++) {
                     const cell = document.createElement('div');
-                    cell.classList.add('cell');
-                    cell.classList.add((r + c) % 2 === 0 ? 'white' : 'black');
+                    cell.classList.add('cell', (r + c) % 2 === 0 ? 'white' : 'black');
                     cell.dataset.row = r;
                     cell.dataset.col = c;
-                    // Evento click
                     cell.onclick = () => toggleQueen(r, c);
                     boardEl.appendChild(cell);
                 }
             }
             queens = [];
             updateBoardVisuals();
+            updateProgress();
         }
 
         function toggleQueen(r, c) {
             const index = queens.findIndex(q => q.r === r && q.c === c);
             
             if (index >= 0) {
-                // Rimuovi se c'è già
                 queens.splice(index, 1);
             } else {
-                // Se c'è già una regina su questa riga, la spostiamo invece di aggiungerne una seconda (UX migliore)
+                // Rimuovi regina sulla stessa riga se esiste (migliora UX)
                 const rowQueenIndex = queens.findIndex(q => q.r === r);
-                if (rowQueenIndex >= 0) {
-                    queens.splice(rowQueenIndex, 1);
-                }
+                if (rowQueenIndex >= 0) queens.splice(rowQueenIndex, 1);
+                
                 queens.push({r, c});
             }
             
-            document.getElementById('statusMsg').innerText = "";
             updateBoardVisuals();
-            checkVictory();
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const count = queens.length;
+            const percent = Math.round((count / N) * 100);
+            const isConflict = hasDirectConflicts();
+
+            // Elementi DOM
+            const bar = document.getElementById('progressBar');
+            const txtCount = document.getElementById('progressText');
+            const txtPercent = document.getElementById('percentText');
+            const txtComment = document.getElementById('wittyComment');
+
+            // Aggiorna testi
+            txtCount.innerText = `${count}/${N} Regine`;
+            txtPercent.innerText = `${percent}%`;
+            
+            // Larghezza barra
+            bar.style.width = `${percent}%`;
+
+            // Gestione errori e commenti
+            if (isConflict) {
+                bar.classList.add('error');
+                txtComment.innerText = "⚠️ Ahi! C'è un conflitto. Le regine litigano!";
+                txtComment.style.color = "#e74c3c";
+            } else {
+                bar.classList.remove('error');
+                txtComment.innerText = comments[count] || "";
+                
+                // Colore speciale per la vittoria
+                if (count === N) {
+                    txtComment.style.color = "#2ecc71"; // Verde vittoria
+                    triggerConfettiConfetti(); // Opzionale: effetto vittoria visivo semplice
+                } else {
+                    txtComment.style.color = "#f1c40f"; // Giallo normale
+                }
+            }
+        }
+
+        function triggerConfettiConfetti() {
+             // Semplice effetto visivo CSS sulla barra
+             const bar = document.getElementById('progressBar');
+             bar.style.backgroundColor = "#2ecc71";
         }
 
         function updateBoardVisuals() {
             const cells = document.querySelectorAll('.cell');
             
-            // 1. Reset visuale
+            // Reset classi
             cells.forEach(c => {
                 c.innerHTML = '';
                 c.classList.remove('unsafe', 'conflict', 'hint');
             });
 
-            // 2. Calcola tutte le celle "minacciate" (Unsafe)
-            // Mappa delle celle attaccate globalmente
+            // Calcolo zone "unsafe" (minacciate)
             let attackedCells = new Set();
-            
             queens.forEach(q => {
-                // Per ogni regina, calcoliamo le sue linee di tiro
                 for(let r=0; r<N; r++) {
                     for(let c=0; c<N; c++) {
                         if (r === q.r || c === q.c || Math.abs(r - q.r) === Math.abs(c - q.c)) {
-                            // Chiave univoca per la cella
                             attackedCells.add(`${r},${c}`); 
                         }
                     }
                 }
             });
 
-            // Applichiamo la classe 'unsafe' a tutte le celle attaccate
-            // Nota: applichiamo unsafe anche dove c'è la regina stessa, ma poi la regina ci va sopra
+            // Applica unsafe
             attackedCells.forEach(key => {
                 const [r, c] = key.split(',');
                 const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
                 if(cell) cell.classList.add('unsafe');
             });
 
-            // 3. Disegna le Regine e rileva Conflitti diretti
+            // Disegna Regine e gestisci conflitti specifici
             queens.forEach((q1, i) => {
                 const cell = document.querySelector(`.cell[data-row='${q1.r}'][data-col='${q1.c}']`);
-                
-                // Disegna simbolo
                 const span = document.createElement('span');
                 span.classList.add('queen-marker');
                 span.innerText = '♛';
                 cell.appendChild(span);
 
-                // Controllo collisioni (Regina vs Regina)
                 let isConflict = false;
                 queens.forEach((q2, j) => {
                     if (i !== j) {
@@ -263,81 +347,62 @@
 
                 if (isConflict) {
                     cell.classList.add('conflict');
-                    // Rimuovi unsafe per pulizia visiva sul conflitto (vince il rosso scuro)
                     cell.classList.remove('unsafe');
                 } else {
-                    // La cella dove sta una regina valida non deve sembrare "bruciata", ma occupata
                     cell.classList.remove('unsafe');
                 }
             });
         }
 
-        // --- Logica AI Backtracking ---
-
-        function getOneStepHelp() {
-            const msg = document.getElementById('statusMsg');
-            msg.innerText = "";
-
-            // 1. Controlla conflitti esistenti
-            if (hasDirectConflicts()) {
-                msg.innerText = "⚠️ Ci sono conflitti rossi da risolvere prima!";
-                return;
-            }
-
-            if (queens.length === N) {
-                msg.innerText = "🎉 Scacchiera completata!";
-                return;
-            }
-
-            // 2. Cerca soluzione
-            const solution = solve(queens);
-
-            if (solution) {
-                // Trova la prima riga libera
-                for (let r = 0; r < N; r++) {
-                    if (!queens.some(q => q.r === r)) {
-                        const correctCol = solution[r];
-                        
-                        // Aggiunge la mossa
-                        queens.push({r: r, c: correctCol});
-                        updateBoardVisuals();
-
-                        // Highlight verde
-                        const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${correctCol}']`);
-                        if(cell) cell.classList.add('hint');
-                        
-                        return;
-                    }
-                }
-            } else {
-                msg.innerText = "⛔ Nessuna soluzione possibile da qui. Togli l'ultima regina.";
-            }
-        }
+        // --- Logica AI ---
 
         function hasDirectConflicts() {
             for(let i=0; i<queens.length; i++) {
                 for(let j=i+1; j<queens.length; j++) {
                     let q1 = queens[i];
                     let q2 = queens[j];
-                    if (q1.r === q2.r || q1.c === q2.c || Math.abs(q1.r - q2.r) === Math.abs(q1.c - q2.c)) {
-                        return true;
-                    }
+                    if (q1.r === q2.r || q1.c === q2.c || Math.abs(q1.r - q2.r) === Math.abs(q1.c - q2.c)) return true;
                 }
             }
             return false;
         }
 
-        // Backtracking Solver
+        function getOneStepHelp() {
+            // Se ci sono conflitti, ferma tutto
+            if (hasDirectConflicts()) {
+                document.getElementById('wittyComment').innerText = "⚠️ Risolvi prima i conflitti rossi!";
+                return;
+            }
+            if (queens.length === N) return;
+
+            const solution = solve(queens);
+
+            if (solution) {
+                // Piazza la prossima regina
+                for (let r = 0; r < N; r++) {
+                    if (!queens.some(q => q.r === r)) {
+                        const correctCol = solution[r];
+                        queens.push({r: r, c: correctCol});
+                        updateBoardVisuals();
+                        updateProgress();
+
+                        // Evidenzia mossa
+                        const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${correctCol}']`);
+                        if(cell) cell.classList.add('hint');
+                        return;
+                    }
+                }
+            } else {
+                document.getElementById('wittyComment').innerText = "⛔ Nessuna soluzione da qui. Torna indietro.";
+            }
+        }
+
         function solve(currentQueens) {
             let board = new Array(N).fill(-1);
-            
-            // Fissa le regine attuali
             for(let q of currentQueens) board[q.r] = q.c;
 
             function solveRecursive(row) {
                 if (row === N) return true; 
-
-                // Se riga già occupata dall'utente, salta
                 if (board[row] !== -1) return solveRecursive(row + 1);
 
                 for (let col = 0; col < N; col++) {
@@ -349,39 +414,27 @@
                 }
                 return false;
             }
-
             if (solveRecursive(0)) return board;
             return null;
         }
 
         function isSafe(board, row, col) {
             for (let i = 0; i < N; i++) {
-                if (board[i] !== -1) { // controlla solo righe piazzate
-                    let r = i;
-                    let c = board[i];
-                    // Controlliamo l'interferenza con la nuova posizione (row, col)
-                    // Nota: Non serve controllare r == row perché il loop è sulle righe precedenti o fissate
-                    if (c === col || Math.abs(row - r) === Math.abs(col - c)) {
-                        return false;
-                    }
+                if (board[i] !== -1) {
+                    let r = i, c = board[i];
+                    if (c === col || Math.abs(row - r) === Math.abs(col - c)) return false;
                 }
             }
             return true;
         }
 
-        function checkVictory() {
-            if (queens.length === N && !hasDirectConflicts()) {
-                document.getElementById('statusMsg').innerText = "🏆 COMPLIMENTI! HAI VINTO! 🏆";
-            }
-        }
-
         function resetBoard() {
             queens = [];
-            document.getElementById('statusMsg').innerText = "Posiziona 8 regine...";
+            document.getElementById('progressBar').style.backgroundColor = ""; // reset colore vittoria
             updateBoardVisuals();
+            updateProgress();
         }
 
-        // Avvio
         initGame();
 
     </script>
