@@ -1,11 +1,13 @@
-# ottoregine
-Come risolvere il gioco: Pensa a come puoi avanzare regina per regina, riga per riga, verificando se è possibile posizionarla senza conflitti con quelle già piazzate. Se trovi un vicolo cieco, torna indietro.
-
 # Gioco delle Otto Regine
 
 Una semplice applicazione web che permette di giocare con il classico problema delle **8 regine**.
 Link: [Gioco delle otto regine](https://salvatorecapolupo.github.io/ottoregine)
 Mirror: [Gioco delle otto regine (con auto-risolutore)](https://lipercubo.it/gioco-delle-8-regine.html)
+
+Come risolvere il gioco: 
+Pensa a come puoi avanzare regina per regina, riga per riga
+Verifica se è possibile posizionarla senza conflitti con quelle già piazzate. 
+Se trovi un vicolo cieco, torna indietro.
 
 ## Descrizione
 
